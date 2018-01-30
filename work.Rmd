@@ -1,0 +1,351 @@
+---
+title: "Untitled"
+output: 
+  html_document: 
+    number_sections: yes
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Préparation des couches
+
+## Importer la grille de l'Insee 200m
+
+Les données viennent directement d'ici : [https://www.insee.fr/fr/statistiques/2520034](https://www.insee.fr/fr/statistiques/2520034)
+
+### Téléchargement
+```{r, eval = F}
+# Téléchargement des données carroyées
+download.file(url = "https://www.insee.fr/fr/statistiques/fichier/2520034/200m-carreaux-metropole.zip", 
+              destfile = "data/raw/200m-carreaux-metropole.zip")
+# extraction du dossier zippé
+unzip("data/raw/200m-carreaux-metropole.zip", exdir = "data/raw/")
+
+```
+
+
+### Import dans R
+```{r, cache=TRUE}
+library(sf)
+# Lecture du fichier mif/mid (en projection Lambert II étendu)
+car_m <- st_read("data/raw/200m-carreaux-metropole/car_m.mif", 
+                 stringsAsFactors = FALSE, crs =  27572)
+# Passage de la projection en LAEA - code EPSG 3035
+car_m <- st_transform(car_m, crs = 3035)
+
+
+```
+
+
+### Selectionner les carreaux en IDF
+Pour des calculs moins lourds ensuite
+
+```{r, cache=TRUE}
+# import communes françaises
+admin <- st_read('data/raw/LEVEL_INT_PARIS.shp')
+# transform vers proj des carreaux
+admin <- st_transform(admin, crs = 3035)
+
+
+# quels carreaux sont en IDF
+x <- st_intersects(x = car_m, y = st_union(admin))
+car_idf <- car_m[lengths(x) > 0,]
+
+```
+
+
+
+### Selection des carreaux rassemblant 5 M d'hab
+5M d'hab cumulé autour de l'Hotel de Ville
+
+```{r, cache=TRUE}
+library(foreign)
+# import de la table de population
+pop <- read.dbf('data/raw/200m-carreaux-metropole/car_m.dbf')
+# jointure
+car_idf <- merge(car_idf, pop[,2:5], by = "idINSPIRE", all.x=TRUE)
+# création d'un point pour le centre
+centre <- st_sfc(st_point(c(3760756, 2889475)), crs = 3035)
+# calclul de la distance au centre
+car_idf$dist_centre <- st_distance(x = st_centroid(car_idf), y = centre)
+# Selection des carreaux comprenant moins de 5M à partir du centre
+car_idf <- car_idf[order(car_idf$dist_centre, decreasing = FALSE), ]
+car_idf$cumpop <- cumsum(car_idf$ind_c)
+car_idf5M <- car_idf[car_idf$cumpop<=5000000,]
+```
+
+
+## Création de la grille pour l'étude
+
+### Création d'une grille pour l'analyse des tweets
+Cette grille a la même emprise globale que la grille de pop, le même diamètre. Elle couvre un espace continu.
+```{r, cache=TRUE}
+# création de la grille
+my_grid <- st_make_grid(x = car_idf5M, cellsize = 200)
+my_grid <- st_sf(geometry = my_grid)
+# calcul des distance au centre
+my_grid$dist_centre <- st_distance(x = st_centroid(my_grid), y = centre)
+# Selection des carreaux à une distance < à la distance max de la grille de population 
+my_grid <- my_grid[my_grid$dist_centre <= max(car_idf5M$dist_centre),]
+```
+
+
+### Récupérer les données de pop dans la grille continue
+Il doit y avoir moyen de faire plus élégant ici...
+```{r, cache=TRUE}
+# intersection entre les 2 grilles
+x <- st_intersects(my_grid, st_centroid(car_idf5M))
+xx <- unlist(lapply(x, function(x){if(length(x)>0){x[[1]]}else{NA}}))
+my_grid$idINSPIRE <- car_idf5M[xx,c("idINSPIRE"), drop=T]
+my_grid$ind_c <- car_idf5M[match(my_grid$idINSPIRE, car_idf5M$idINSPIRE), 
+                           "ind_c", drop=T]
+```
+
+
+
+
+## Récupérer des couches d'habillage
+
+```{r, cache=TRUE}
+library(osmdata)
+library(units)
+# define a bounding box
+q0 <- opq(bbox = st_bbox(st_transform(my_grid, 4326)))
+
+# Récupérer les cours d'eau
+q <- add_osm_feature(opq = q0, key = 'waterway', value = "riverbank")
+res <- osmdata_sf(q)
+river <- do.call(c, list(res$osm_multipolygons$geometry, 
+                         res$osm_polygons$geometry))
+# nettoyage
+river <- st_transform(river, 3035)
+river <- st_union(x = st_buffer(river,0), by_feature = F)
+river <- st_cast(x = river, 'POLYGON')
+river <- river[st_area(river)>=set_units(20000, "m^2")]
+river <- st_intersection(x = river, y = my_grid)
+river <- st_union(river)
+
+# extract Parks and Cemetaries
+q <- add_osm_feature(opq = q0, key = 'leisure', value = "park")
+res <- osmdata_sf(q)
+parc1 <- st_geometry(res$osm_polygons)
+parc2 <- st_geometry(res$osm_multipolygons)
+q <- add_osm_feature(opq = q0, key = 'landuse', value = "cemetery")
+res <- osmdata_sf(q)
+parc3 <- st_geometry(res$osm_polygons)
+parc <- do.call(c, list(parc1, parc2, parc3))
+# nettoyage
+parc <- st_transform(parc, 3035)
+parc <- st_union(x = st_buffer(parc,0), by_feature = F)
+parc <- st_cast(parc, "POLYGON")
+parc <- parc[st_area(parc)>=set_units(30000, "m^2")]
+parc <- st_intersection(x = parc, y = my_grid)
+parc <- st_union(parc)
+
+```
+
+
+### Résultats
+
+```{r, cache=TRUE}
+library(cartography)
+opar <- par(mar=c(0,0,0,0))
+choroLayer(x = my_grid, var="ind_c", border = NA, nclass = 6, method="q6",
+           col=carto.pal(pal1 = 'wine.pal', n1 = 6))
+plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
+plot(parc, add=T, col = "#AACBAF", border=NA)
+par(opar)
+
+
+```
+
+
+## Export (temp)
+
+```{r, cache=TRUE}
+
+# j'utilise rds pour les sauvegarde de fichier : 
+# 1 objet = 1 fichier, pas de risque d'écraser des objets déjà existants
+saveRDS(my_grid, "data/my_grid.rds")
+saveRDS(river, "data/river.rds")
+saveRDS(parc, "data/parc.rds")
+
+```
+
+## Import des tweets
+
+**On peut démarrer une session à partir d'ici**
+
+```{r, cache=TRUE}
+my_grid <- readRDS("data/my_grid.rds")
+```
+
+### Import des tweets et transformation en sf
+```{r, eval=FALSE, cache=TRUE}
+library(readr)
+# import tweets
+tweet_raw <- read_csv("data/raw/tcat_paris_geo-20160101-20161231---------geoTweets--8cef61cd09.csv")
+names(tweet_raw)[1] <- "id"
+tw <- tweet_raw[, c("id","created_at","from_user_id",  
+                    "from_user_name", "text", "lang", "lng", "lat", "source")]
+# transform to geo
+tw_geo <- st_as_sf(as.data.frame(tw), coords = c("lng","lat"), crs = 4326)
+tw_geo <- st_transform(tw_geo, 3035)
+nrow(tw_geo)
+
+```
+
+### Selection des tweets dans la grille
+et association du code id du carreau
+```{r, cache=TRUE, eval=FALSE}
+# dans quel carreau se trouve chaque tweet
+inter <- st_intersects(x = tw_geo, y = my_grid, sparse = T)
+tw_geo$idINSPIRE <- unlist(lapply(inter, function(x){if(length(x)>0){x[[1]]}else{NA}}))
+# selection des tweets dans les carreaux
+tw_geo <- tw_geo[!is.na(tw_geo$idINSPIRE),]
+```
+
+## Création d'une date/heure correcte
+
+```{r, cache=TRUE, eval=FALSE}
+# Parse la date dans le bon fuseau horaire
+tw_geo$fulldate <- lubridate::with_tz(as.POSIXct(tw_geo$created_at), 
+                                      "Europe/Paris")
+
+```
+
+### Export 
+```{r, cache=TRUE, eval=FALSE}
+saveRDS(tw_geo, "data/tw_geo.rds")
+```
+
+
+
+
+# Selection avancée des tweets
+
+**On peut commencer ici si on veut**
+
+```{r, cache=TRUE, eval=TRUE}
+tw_geo <- readRDS("data/tw_geo.rds")
+```
+
+
+
+## Les clients
+```{r, eval = TRUE, cache=TRUE}
+# nb tweets by source / user
+tsu <- aggregate(tw_geo$id, 
+                 by = list(source = tw_geo$source, 
+                           from_user_id = tw_geo$from_user_id), 
+                 FUN = length)
+# nb user / source
+us <- aggregate(tsu$source, 
+                by = list(source = tsu$source), 
+                FUN = length)
+# nb tweet / source
+ts <- aggregate(tsu$x, 
+                by = list(source = tsu$source), 
+                FUN = sum)
+# table client/nb tweets/nb users/nb tweet per user/short name
+client <- merge(us,ts, by = 'source')
+names(client)[2:3] <- c("nuser", "ntweet")
+client$tweetpuser <- round(client$ntweet / client$nuser,0)
+client <- client[order(client$nuser, decreasing = T),]
+row.names(client) <- 1:nrow(client)
+client$name <- apply(client,1,function(x){rvest::html_text(xml2::read_html(x[1]))})
+
+# graph des clients tweet/user (log log)
+options(scipen=1000000)
+plot(client$nuser, client$ntweet,
+     xlab="n. user", ylab = "n. tweet", 
+     main="N user & tweet par client", 
+     log="xy")
+text(client$nuser[1:4], client$ntweet[1:4], labels = client$name[1:4], 
+     cex = 0.7, pos = c(2,4,4,4))
+
+# meme graph avec seulement les clients selectionnés
+plot(client[client$nuser >= 10 & client$tweetpuser <= 50, "nuser"], 
+     client[client$nuser >= 10 & client$tweetpuser <= 50, "ntweet"], 
+     xlab="n. user", ylab = "n. tweet", 
+     main="N user & tweet par client après nettoyage clients", 
+     log="xy")
+text(client$nuser[1:4], client$ntweet[1:4], labels = client$name[1:4], 
+     cex = 0.7, pos = c(2,4,4,4))
+```
+
+## Selection des tweets utilisant des clients "normaux"
+c a d pas des robots
+
+```{r, cache=TRUE}
+tw_geo <- tw_geo[tw_geo$source %in% client[client$nuser >= 10 & client$tweetpuser <= 50, "source"],]
+```
+
+
+
+## Problème des XY au centre de Paris
+
+En regardant d'un peu plus près les localisations des tweets, il semble un peu étrange que certains se trouvent à moins d'un mètre de distance (en si grande quantité...)
+
+
+```{r, eval=FALSE}
+library(sf)
+# aggrégation des tweets par couple de coordonnées ("points de tweets")
+coords <- st_coordinates(tw_geo)
+xx <- cbind(tw_geo, coords)
+twagcoord <- aggregate(xx$id, 
+                       by = list(lng=coords[,1], lat=coords[,2]), 
+                       FUN = length)
+out <- twagcoord[order(twagcoord$x, decreasing = T),] 
+
+# transformation des points de tweets en objets spatiaux
+out <- out[out$x>=10,]
+x <- st_as_sf(as.data.frame(out), coords = c("lng","lat"), crs = 3035)
+
+# distance entre points de tweets 
+mat <- st_distance(x,x)
+# se débarasser des unités 
+units(mat) <- NULL
+# neutralisation de la diagonale
+diag(mat) <- 9999
+# mat contient les distances entre tous les points de tweets
+
+# a donne la liste des points de tweets ayant des points de tweets à moins de 1 mètre
+a <- apply(mat,2,min) < 1
+# les indices de ces points
+which(a)
+
+
+which(mat[5,]<1)
+
+
+
+plot(x[c(5,102,20,109),"geometry"])
+c(5,102,20,109)
+c(8,13)
+c(14,188)
+
+
+library(cartography)
+osm <- getTiles(x[c(5,102,20,109),], zoom=16)
+tilesLayer(osm)
+plot(x[c(5,102,20,109),"geometry"], add=T)
+out[c(5,102,20,109),]
+plot(tw_geo$geometry,add=T, col="red", cex = 0.2)
+
+
+```
+
+
+
+
+
+
+
+
+
+
