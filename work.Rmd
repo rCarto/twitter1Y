@@ -302,20 +302,16 @@ tw_geo <- readRDS("data/tw_geo.rds")
 
 
 
-## Problème des XY au centre de Paris
+## Inspection des positions des tweets
 
-En regardant d'un peu plus près les localisations des tweets, il semble un peu étrange que certains se trouvent à moins d'un mètre de distance (en si grande quantité...)
-
-
+<!-- En regardant d'un peu plus près les localisations des tweets, il semble un peu étrange que certains se trouvent à moins d'un mètre de distance (en si grande quantité...) -->
 
 
 ### Création de points de tweets
 Les différentes localisations des tweets (aggrégation sur les coordonnées). 
 Appelons ça les "points de tweets"
 
-```{r, eval=FALSE}
-
-head(tw_geo)
+```{r, eval=TRUE, cache=TRUE}
 twagcoord <- aggregate(tw_geo$id, 
                        by = list(lng=tw_geo$X, lat=tw_geo$Y), 
                        FUN = length)
@@ -327,84 +323,116 @@ nrow(tw_geo)
 
 Les 1 040 655 tweets sont émis depuis 164 002 points de tweets
 
+```{r, eval=TRUE, cache=TRUE}
+plot(1:nrow(out), out$x, log="y",pch=20, cex=0.4, col="red", ylab = 'nb. tweets', 
+     xlab="",main="nb tweets par point de tweets")
+```
 
-```{r, eval=FALSE}
+Les premiers points de tweets concentrent la plupart des tweets.  
+`r sum(out$x[1:1000])` tweets pour les 1000 premiers points
+
+
+Ces superpositions de tweets ne doivent que très rarement issue de position GPS.   
+Les tweets se superposant ne sont pas issus de positions GPS mais sont assignés automatiquement à des POI (hotels de villes, batiments touristiques...)?
+
+
+
+### Ces points sont ils stables dans le temps
+
+calendar heat map des 10 premiers points de tweets
+
+```{r, cache=TRUE, fig.height=3}
+source("calendarHeat.R")
+# selection des tweets du 1er point de tweet
+
+for(i in 1:10){
+  xx <- tw_geo[tw_geo$X %in% out[i,"lng"] & tw_geo$Y %in% out[i,"lat"],  ]
+  user <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
+  my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
+  cat(c("i:",i, "; tweets:",sum(my_ts$x),"; user:", nrow(user)))
+  calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
+}
+
+```
+
+Et bien non, ces points ne sont pas stables dans le temps. 
+
+
+
+
+### Ces points sont ils précisément placés
+
+Je m'interesse ici aux points de tweets placés à moins d'un mètre les uns des autres. 
+
+```{r, eval=TRUE, cache=TRUE}
+# transformation des 1000 premiers points de tweets en objet sf
+x <- st_as_sf(as.data.frame(out[1:1000,]), coords = c("lng","lat"), crs = 3035)
+# distance entre points de tweets 
+mat <- st_distance(x,x)
+# se débarasser des unités 
+units(mat) <- NULL
+# neutralisation de la diagonale
+diag(mat) <- 9999
+# mat contient les distances entre tous les points de tweets
+```
+
+
+
+
+```{r, eval=TRUE, cache=TRUE}
+# a donne la liste des points de tweets ayant des points de tweets à moins de 1 mètre
+a <- apply(mat,2,min) < 1
+# les indices de ces points
+i <- which(a)[1]
+j <- which(mat[i,]<1)
+
+# i et j nous donnent une première liste de 4 points placés à moins d'un mêtre 
+# les uns des autres
+c(i,j)
+
+# selection des tweets 
+xx <- tw_geo[tw_geo$X %in% out[c(i,j),"lng"] & tw_geo$Y %in% out[c(i,j),"lat"],  ]
+user <- aggregate(xx$id, by = list(u = xx$from_user_id),length)
+my_ts <- aggregate(xx$id, by = list(date = substr(xx$fulldate,1,10)), length)
+cat(c("tweets:",sum(my_ts$x),"; user:", nrow(user)))
+calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
+```
+
+Ces points ne sont pas présents tout au long de l'année.  
+Mais il ya mieux :
+
+
+```{r, eval=TRUE, cache=TRUE}
+for(k in c(i,j)){
+  xx <- tw_geo[tw_geo$X %in% out[k,"lng"] & tw_geo$Y %in% out[k,"lat"],  ]
+  user <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
+  my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
+  cat(c("i:",k, "; tweets:",sum(my_ts$x),"; user:", nrow(user)))
+  calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
+}
+
+```
+
+
+Ces points ne sont pas présents simultanément au cours de l'année.   
+
+
+Faut-il ne considérer que les tweets ne se supperposant pas? Ou alors ce n'est pas grave que les tweets se superposent, 
+1000 points sur le même metre carré à montmartre doivent bien représenter 1000 personnes dans les environs (quelques metres à al ronde, quelque centaines de metres?). Quid des 145000 tweets sur la place de l'hotel de ville? 
+
+
+
+
+
+
+```{r, eval=FALSE, echo=FALSE}
 library(sf)
-
-dev.off()
-plot(1:nrow(out), out$x, log="y",pch=20, cex=0.4, col="red")
-head(out)
-x <- st_as_sf(as.data.frame(out), coords = c("lng","lat"), crs = 3035)
-
-
+out [1,]
 my_grid <- readRDS("data/my_grid.rds")
 river <- readRDS("data/river.rds")
 parc <- readRDS("data/parc.rds")
-
-
-library(cartography)
-opar <- par(mar=c(0,0,0,0))
-plot(st_geometry(my_grid), col="grey", border="white",lwd=0.2)
-plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
-plot(parc, add=T, col = "#AACBAF", border=NA)
-propSymbolsLayer(x = x[50000:nrow(x),],var="x", inches=0.1)
-labelLayer(x = x[2:50,], txt = "id", pos=2, cex=1, halo = TRUE, overlap = F )
-
-par(opar)
-
-source("calendarHeat.R")
-
-x[28,]
-
-k <- 40
-
 a <- out[out$x==1,]
-
 xx <- tw_geo[tw_geo$X %in% a[,"lng"] & tw_geo$Y %in% a[,"lat"],  ]
-
-nuser <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
-nuser <- nuser[order(nuser$x, decreasing = T),]
-nuser <- nuser[nuser$x>=36,]
-
-dim(nuser)
-k <- 15
-my_ts <- aggregate(tw_geo$id[tw_geo$from_user_id==nuser[k,"u"]],
-                   by = list(date=substr(tw_geo$fulldate[tw_geo$from_user_id==nuser[k,"u"]],1,10)), 
-                   length)
-calendarHeat(my_ts$date, my_ts$x,ncolor=5, col = cartography::carto.pal(pal1 =  "turquoise.pal",20))
-
-
-
-
-
-
-par(mfrow=c(4,5), mar = c(0,0,0,0))
-for(i in 1:20){
-  plot(st_geometry(my_grid), col="black", border=NA,lwd=0.1)
-  plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
-  plot(parc, add=T, col = "#AACBAF", border=NA)
-  plot(st_geometry(xx[xx$from_user_id %in% nuser$u[i],]),cex = 1, pch = 20, col = "red", add=T)
-}
-
-head(nuser)
-
-
-
-toto
-
-my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
-print(sum(my_ts$x))
-print(nrow(toto))
-calendarHeat(my_ts$date, my_ts$x,ncolor=5, col = cartography::carto.pal(pal1 =  "turquoise.pal",20))
-
-
-opar <- par(mar=c(0,0,0,0))
-plot(st_geometry(my_grid), col="grey", border="white",lwd=0.2)
-plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
-plot(parc, add=T, col = "#AACBAF", border=NA)
-plot(xx$geometry, cex = 0.1, pch=20, col='orange', add=T)
-
-
 library(spatstat)
 library(maptools)
 library(raster)
@@ -435,69 +463,6 @@ mtext(text = "cartography 2.0.2\nMap data © OpenStreetMap contributors, under C
       side = 1, line = -1, adj = c(0.01,0.01), cex = 0.6, font = 3)
 north(pos = c(661171.8,6858051))
 par(opar)
-
-
-
-
-
-```
-
-
-
-
-
-```{r, eval=FALSE}
-# distance entre points de tweets 
-mat <- st_distance(x,x)
-# se débarasser des unités 
-units(mat) <- NULL
-# neutralisation de la diagonale
-diag(mat) <- 9999
-# mat contient les distances entre tous les points de tweets
-
-# a donne la liste des points de tweets ayant des points de tweets à moins de 1 mètre
-a <- apply(mat,2,min) < 1
-# les indices de ces points
-
-
-
-
-
-i <- which(a)[4]
-j <- which(mat[i,]<1)
-
-par(mfrow=c(2,1))
-
-# for (k in 1:10){
-k <- 109
-i <- k
-j <- k
-
-xx <- tw_geo[tw_geo$X %in% out[c(i,j),"lng"] & tw_geo$Y %in% out[c(i,j),"lat"],  ]
-toto <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
-my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
-print(sum(my_ts$x))
-print(nrow(toto))
-calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
-# }
-
-
-
-```
-
-
-
-
-```{r, eval=FALSE}
-
-head(tw_geo)
-
-
-my_ts <- aggregate(t$id,by = list(date=substr(tw_geo$fulldate,1,10)), length)
-
-head(my_ts)
-calendarHeat(my_ts$date, my_ts$x,ncolor=12, col = cartography::carto.pal(pal1 = "wine.pal", 12))
-
 
 ```
 
