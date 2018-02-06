@@ -18,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 Les données viennent directement d'ici : [https://www.insee.fr/fr/statistiques/2520034](https://www.insee.fr/fr/statistiques/2520034)
 
 ### Téléchargement
-```{r, eval = F}
+```{r, eval=FALSE}
 # Téléchargement des données carroyées
 download.file(url = "https://www.insee.fr/fr/statistiques/fichier/2520034/200m-carreaux-metropole.zip", 
               destfile = "data/raw/200m-carreaux-metropole.zip")
@@ -29,7 +29,7 @@ unzip("data/raw/200m-carreaux-metropole.zip", exdir = "data/raw/")
 
 
 ### Import dans R
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 library(sf)
 # Lecture du fichier mif/mid (en projection Lambert II étendu)
 car_m <- st_read("data/raw/200m-carreaux-metropole/car_m.mif", 
@@ -44,13 +44,11 @@ car_m <- st_transform(car_m, crs = 3035)
 ### Selectionner les carreaux en IDF
 Pour des calculs moins lourds ensuite
 
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 # import communes françaises
 admin <- st_read('data/raw/LEVEL_INT_PARIS.shp')
 # transform vers proj des carreaux
 admin <- st_transform(admin, crs = 3035)
-
-
 # quels carreaux sont en IDF
 x <- st_intersects(x = car_m, y = st_union(admin))
 car_idf <- car_m[lengths(x) > 0,]
@@ -62,7 +60,7 @@ car_idf <- car_m[lengths(x) > 0,]
 ### Selection des carreaux rassemblant 5 M d'hab
 5M d'hab cumulé autour de l'Hotel de Ville
 
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 library(foreign)
 # import de la table de population
 pop <- read.dbf('data/raw/200m-carreaux-metropole/car_m.dbf')
@@ -83,7 +81,7 @@ car_idf5M <- car_idf[car_idf$cumpop<=5000000,]
 
 ### Création d'une grille pour l'analyse des tweets
 Cette grille a la même emprise globale que la grille de pop, le même diamètre. Elle couvre un espace continu.
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 # création de la grille
 my_grid <- st_make_grid(x = car_idf5M, cellsize = 200)
 my_grid <- st_sf(geometry = my_grid)
@@ -96,7 +94,7 @@ my_grid <- my_grid[my_grid$dist_centre <= max(car_idf5M$dist_centre),]
 
 ### Récupérer les données de pop dans la grille continue
 Il doit y avoir moyen de faire plus élégant ici...
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 # intersection entre les 2 grilles
 x <- st_intersects(my_grid, st_centroid(car_idf5M))
 xx <- unlist(lapply(x, function(x){if(length(x)>0){x[[1]]}else{NA}}))
@@ -110,7 +108,7 @@ my_grid$ind_c <- car_idf5M[match(my_grid$idINSPIRE, car_idf5M$idINSPIRE),
 
 ## Récupérer des couches d'habillage
 
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 library(osmdata)
 library(units)
 # define a bounding box
@@ -149,24 +147,9 @@ parc <- st_union(parc)
 ```
 
 
-### Résultats
-
-```{r, cache=TRUE}
-library(cartography)
-opar <- par(mar=c(0,0,0,0))
-choroLayer(x = my_grid, var="ind_c", border = NA, nclass = 6, method="q6",
-           col=carto.pal(pal1 = 'wine.pal', n1 = 6))
-plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
-plot(parc, add=T, col = "#AACBAF", border=NA)
-par(opar)
-
-
-```
-
-
 ## Export (temp)
 
-```{r, cache=TRUE}
+```{r, eval=FALSE}
 
 # j'utilise rds pour les sauvegarde de fichier : 
 # 1 objet = 1 fichier, pas de risque d'écraser des objets déjà existants
@@ -182,10 +165,26 @@ saveRDS(parc, "data/parc.rds")
 
 ```{r, cache=TRUE}
 my_grid <- readRDS("data/my_grid.rds")
+river <- readRDS("data/river.rds")
+parc <- readRDS("data/parc.rds")
+
 ```
 
+### Carto
+
+```{r, cache=TRUE}
+library(cartography)
+opar <- par(mar=c(0,0,0,0))
+choroLayer(x = my_grid, var="ind_c", border = NA, nclass = 6, method="q6",
+           col=carto.pal(pal1 = 'wine.pal', n1 = 6), colNA = NA, add=F)
+plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
+plot(parc, add=T, col = "#AACBAF", border=NA)
+par(opar)
+```
+
+
 ### Import des tweets et transformation en sf
-```{r, eval=FALSE, cache=TRUE}
+```{r, eval=FALSE}
 library(readr)
 # import tweets
 tweet_raw <- read_csv("data/raw/tcat_paris_geo-20160101-20161231---------geoTweets--8cef61cd09.csv")
@@ -201,7 +200,7 @@ nrow(tw_geo)
 
 ### Selection des tweets dans la grille
 et association du code id du carreau
-```{r, cache=TRUE, eval=FALSE}
+```{r, eval=FALSE}
 # dans quel carreau se trouve chaque tweet
 inter <- st_intersects(x = tw_geo, y = my_grid, sparse = T)
 tw_geo$idINSPIRE <- unlist(lapply(inter, function(x){if(length(x)>0){x[[1]]}else{NA}}))
@@ -211,33 +210,19 @@ tw_geo <- tw_geo[!is.na(tw_geo$idINSPIRE),]
 
 ## Création d'une date/heure correcte
 
-```{r, cache=TRUE, eval=FALSE}
+```{r, eval=FALSE}
 # Parse la date dans le bon fuseau horaire
-tw_geo$fulldate <- lubridate::with_tz(as.POSIXct(tw_geo$created_at), 
-                                      "Europe/Paris")
+library(lubridate)
+tw_geo$fulldate <- with_tz(as.POSIXct(tw_geo$created_at), "Europe/Paris")
+# dégager les tweets du 1er janvier 2017
+tw_geo <- tw_geo[tw_geo$fulldate >= force_tz(as.POSIXct("2016-01-01 00:00:00"), "Europe/Paris" ) &
+                      tw_geo$fulldate < force_tz(as.POSIXct("2017-01-01 00:00:00"), "Europe/Paris" ),]
 
 ```
 
-### Export 
-```{r, cache=TRUE, eval=FALSE}
-saveRDS(tw_geo, "data/tw_geo.rds")
-```
+## Sélection des tweets en fonctions des clients
 
-
-
-
-# Selection avancée des tweets
-
-**On peut commencer ici si on veut**
-
-```{r, cache=TRUE, eval=TRUE}
-tw_geo <- readRDS("data/tw_geo.rds")
-```
-
-
-
-## Les clients
-```{r, eval = TRUE, cache=TRUE}
+```{r, eval=FALSE}
 # nb tweets by source / user
 tsu <- aggregate(tw_geo$id, 
                  by = list(source = tw_geo$source, 
@@ -258,7 +243,13 @@ client$tweetpuser <- round(client$ntweet / client$nuser,0)
 client <- client[order(client$nuser, decreasing = T),]
 row.names(client) <- 1:nrow(client)
 client$name <- apply(client,1,function(x){rvest::html_text(xml2::read_html(x[1]))})
+saveRDS(client, "data/client.rds")
 
+```
+
+
+```{r, eval=TRUE, cache=TRUE}
+client <- readRDS("data/client.rds")
 # graph des clients tweet/user (log log)
 options(scipen=1000000)
 plot(client$nuser, client$ntweet,
@@ -276,14 +267,38 @@ plot(client[client$nuser >= 10 & client$tweetpuser <= 50, "nuser"],
      log="xy")
 text(client$nuser[1:4], client$ntweet[1:4], labels = client$name[1:4], 
      cex = 0.7, pos = c(2,4,4,4))
+
 ```
 
-## Selection des tweets utilisant des clients "normaux"
-c a d pas des robots
-
-```{r, cache=TRUE}
-tw_geo <- tw_geo[tw_geo$source %in% client[client$nuser >= 10 & client$tweetpuser <= 50, "source"],]
+```{r, eval=FALSE}
+# Selection des tweets utilisant des clients "normaux"
+# c a d pas des robots
+tw_geo <- tw_geo[tw_geo$source %in% 
+                   client[client$nuser >= 10 & client$tweetpuser <= 50, "source"],]
 ```
+
+
+## Ajout des coordonnées en colonnes 
+```{r, eval=FALSE}
+tw_geo <- cbind(tw_geo, st_coordinates(tw_geo))
+```
+
+## Export 
+```{r, eval=FALSE}
+saveRDS(tw_geo, "data/tw_geo.rds")
+```
+
+
+
+# Selection avancée des tweets
+
+**On peut démarrer une session à partir d'ici**
+
+```{r, cache=TRUE, eval=TRUE}
+library(sf)
+tw_geo <- readRDS("data/tw_geo.rds")
+```
+
 
 
 
@@ -292,20 +307,146 @@ tw_geo <- tw_geo[tw_geo$source %in% client[client$nuser >= 10 & client$tweetpuse
 En regardant d'un peu plus près les localisations des tweets, il semble un peu étrange que certains se trouvent à moins d'un mètre de distance (en si grande quantité...)
 
 
+
+
+### Création de points de tweets
+Les différentes localisations des tweets (aggrégation sur les coordonnées). 
+Appelons ça les "points de tweets"
+
 ```{r, eval=FALSE}
-library(sf)
-# aggrégation des tweets par couple de coordonnées ("points de tweets")
-coords <- st_coordinates(tw_geo)
-xx <- cbind(tw_geo, coords)
-twagcoord <- aggregate(xx$id, 
-                       by = list(lng=coords[,1], lat=coords[,2]), 
+
+head(tw_geo)
+twagcoord <- aggregate(tw_geo$id, 
+                       by = list(lng=tw_geo$X, lat=tw_geo$Y), 
                        FUN = length)
 out <- twagcoord[order(twagcoord$x, decreasing = T),] 
+out$id <- 1:nrow(out)
+nrow(out)
+nrow(tw_geo)
+```
 
-# transformation des points de tweets en objets spatiaux
-out <- out[out$x>=10,]
+Les 1 040 655 tweets sont émis depuis 164 002 points de tweets
+
+
+```{r, eval=FALSE}
+library(sf)
+
+dev.off()
+plot(1:nrow(out), out$x, log="y",pch=20, cex=0.4, col="red")
+head(out)
 x <- st_as_sf(as.data.frame(out), coords = c("lng","lat"), crs = 3035)
 
+
+my_grid <- readRDS("data/my_grid.rds")
+river <- readRDS("data/river.rds")
+parc <- readRDS("data/parc.rds")
+
+
+library(cartography)
+opar <- par(mar=c(0,0,0,0))
+plot(st_geometry(my_grid), col="grey", border="white",lwd=0.2)
+plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
+plot(parc, add=T, col = "#AACBAF", border=NA)
+propSymbolsLayer(x = x[50000:nrow(x),],var="x", inches=0.1)
+labelLayer(x = x[2:50,], txt = "id", pos=2, cex=1, halo = TRUE, overlap = F )
+
+par(opar)
+
+source("calendarHeat.R")
+
+x[28,]
+
+k <- 40
+
+a <- out[out$x==1,]
+
+xx <- tw_geo[tw_geo$X %in% a[,"lng"] & tw_geo$Y %in% a[,"lat"],  ]
+
+nuser <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
+nuser <- nuser[order(nuser$x, decreasing = T),]
+nuser <- nuser[nuser$x>=36,]
+
+dim(nuser)
+k <- 15
+my_ts <- aggregate(tw_geo$id[tw_geo$from_user_id==nuser[k,"u"]],
+                   by = list(date=substr(tw_geo$fulldate[tw_geo$from_user_id==nuser[k,"u"]],1,10)), 
+                   length)
+calendarHeat(my_ts$date, my_ts$x,ncolor=5, col = cartography::carto.pal(pal1 =  "turquoise.pal",20))
+
+
+
+
+
+
+par(mfrow=c(4,5), mar = c(0,0,0,0))
+for(i in 1:20){
+  plot(st_geometry(my_grid), col="black", border=NA,lwd=0.1)
+  plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
+  plot(parc, add=T, col = "#AACBAF", border=NA)
+  plot(st_geometry(xx[xx$from_user_id %in% nuser$u[i],]),cex = 1, pch = 20, col = "red", add=T)
+}
+
+head(nuser)
+
+
+
+toto
+
+my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
+print(sum(my_ts$x))
+print(nrow(toto))
+calendarHeat(my_ts$date, my_ts$x,ncolor=5, col = cartography::carto.pal(pal1 =  "turquoise.pal",20))
+
+
+opar <- par(mar=c(0,0,0,0))
+plot(st_geometry(my_grid), col="grey", border="white",lwd=0.2)
+plot(river, add=T, col = "#AAD3DF", border="#AAD3DF", lwd= 0.5)
+plot(parc, add=T, col = "#AACBAF", border=NA)
+plot(xx$geometry, cex = 0.1, pch=20, col='orange', add=T)
+
+
+library(spatstat)
+library(maptools)
+library(raster)
+bb <- as(my_grid, "Spatial")
+bbowin <- as.owin(bb)
+pts <- st_coordinates(xx)
+p <- ppp(pts[,1], pts[,2], window=bbowin)
+ds <- density.ppp(x = p, sigma = 300, eps = c(100,100))
+rasdens <- raster(ds) * 1000 * 1000
+rasdens <- rasdens+1
+bks <- getBreaks(values(rasdens), nclass = 20, method = "equal")
+cols <- colorRampPalette(c("black","#940000", "yellow","white"), interpolate = "spline")(length(bks)-1)
+plot(my_grid$geometry, col = NA, border = NA, main="",bg="black")
+image(rasdens, breaks= bks, col=cols, add = T,legend=F)
+legendChoro(pos = "topright",cex = 0.7,title.cex = .8,
+            title.txt = paste0("\nsigma=500m,\nn=",nrow(pts)),
+            breaks = bks-1, nodata = FALSE,values.rnd = 0,
+            col = cols)
+plot(river, col = "#AAD3DF", add=T, border=NA)
+plot(parc, col = "#CDEBB235", border = NA, add=T)
+plot(st_geometry(xx), add=T, col = "#7F78D010", pch = 20, cex = 0.3)
+
+plot(st_geometry(xx), add=T, col = "#7F78D010", pch = 20, cex = 0.2)
+
+plot(st_geometry(xx), add=T, col = "#7F78D010", pch = 20, cex = 0.1)
+barscale(size = 1)
+mtext(text = "cartography 2.0.2\nMap data © OpenStreetMap contributors, under CC BY SA.", 
+      side = 1, line = -1, adj = c(0.01,0.01), cex = 0.6, font = 3)
+north(pos = c(661171.8,6858051))
+par(opar)
+
+
+
+
+
+```
+
+
+
+
+
+```{r, eval=FALSE}
 # distance entre points de tweets 
 mat <- st_distance(x,x)
 # se débarasser des unités 
@@ -317,25 +458,29 @@ diag(mat) <- 9999
 # a donne la liste des points de tweets ayant des points de tweets à moins de 1 mètre
 a <- apply(mat,2,min) < 1
 # les indices de ces points
-which(a)
-
-
-which(mat[5,]<1)
 
 
 
-plot(x[c(5,102,20,109),"geometry"])
-c(5,102,20,109)
-c(8,13)
-c(14,188)
 
 
-library(cartography)
-osm <- getTiles(x[c(5,102,20,109),], zoom=16)
-tilesLayer(osm)
-plot(x[c(5,102,20,109),"geometry"], add=T)
-out[c(5,102,20,109),]
-plot(tw_geo$geometry,add=T, col="red", cex = 0.2)
+i <- which(a)[4]
+j <- which(mat[i,]<1)
+
+par(mfrow=c(2,1))
+
+# for (k in 1:10){
+k <- 109
+i <- k
+j <- k
+
+xx <- tw_geo[tw_geo$X %in% out[c(i,j),"lng"] & tw_geo$Y %in% out[c(i,j),"lat"],  ]
+toto <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
+my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
+print(sum(my_ts$x))
+print(nrow(toto))
+calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
+# }
+
 
 
 ```
@@ -343,6 +488,18 @@ plot(tw_geo$geometry,add=T, col="red", cex = 0.2)
 
 
 
+```{r, eval=FALSE}
+
+head(tw_geo)
+
+
+my_ts <- aggregate(t$id,by = list(date=substr(tw_geo$fulldate,1,10)), length)
+
+head(my_ts)
+calendarHeat(my_ts$date, my_ts$x,ncolor=12, col = cartography::carto.pal(pal1 = "wine.pal", 12))
+
+
+```
 
 
 

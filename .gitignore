@@ -35,7 +35,7 @@ vignettes/*.pdf
 
 
 # RAW DATA
-data/
+data/raw
 
 # ARCHIVES
 archives/
