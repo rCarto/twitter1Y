@@ -300,8 +300,6 @@ tw_geo <- readRDS("data/tw_geo.rds")
 ```
 
 
-
-
 ## Inspection des positions des tweets
 
 <!-- En regardant d'un peu plus près les localisations des tweets, il semble un peu étrange que certains se trouvent à moins d'un mètre de distance (en si grande quantité...) -->
@@ -418,7 +416,7 @@ Ces points ne sont pas présents simultanément au cours de l'année.
 
 
 Faut-il ne considérer que les tweets ne se supperposant pas? Ou alors ce n'est pas grave que les tweets se superposent, 
-1000 points sur le même metre carré à montmartre doivent bien représenter 1000 personnes dans les environs (quelques metres à al ronde, quelque centaines de metres?). Quid des 145000 tweets sur la place de l'hotel de ville? 
+1000 points sur le même metre carré à montmartre doivent bien représenter 1000 personnes dans les environs (quelques metres à la ronde, quelque centaines de metres?). Quid des 145000 tweets sur la place de l'hotel de ville? 
 
 
 
