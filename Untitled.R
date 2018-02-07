@@ -1,3 +1,18 @@
+#Use basic auth
+secret <- jsonlite::base64_enc(paste(consumer_key, consumer_secret, sep = ":"))
+req <- httr::POST("https://api.twitter.com/oauth2/token",
+                  httr::add_headers(
+                    "Authorization" = paste("Basic", gsub("\n", "", secret)),
+                    "Content-Type" = "application/x-www-form-urlencoded;charset=UTF-8"
+                  ),
+                  body = "grant_type=client_credentials"
+);
+
+#Extract the access token
+httr::stop_for_status(req, "authenticate with twitter")
+token <- paste("Bearer", httr::content(req)$access_token)
+
+
 [27] "https://api.twitter.com/1.1/geo/id/af9a31eae0eac9a0.json" "https://api.twitter.com/1.1/geo/id/5e02a0f0d91c76d2.json"
 [29] "https://api.twitter.com/1.1/geo/id/f7c22e0cf7b3af2b.json" "https://api.twitter.com/1.1/geo/id/17547b2136215c08.json"
 [31] "https://api.twitter.com/1.1/geo/id/21fb3163863b6d42.json" "https://api.twitter.com/1.1/geo/id/01e93ed535e05b29.json"
