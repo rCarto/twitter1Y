@@ -327,7 +327,7 @@ plot(1:nrow(out), out$x, log="y",pch=20, cex=0.4, col="red", ylab = 'nb. tweets'
 ```
 
 Les premiers points de tweets concentrent la plupart des tweets.  
-`r sum(out$x[1:1000])` tweets (soit `r sum(out$x[1:1000])*100/nrow(tw_geo)`%)pour les 1000 premiers points
+`r sum(out$x[1:1000])` tweets (soit `r round(sum(out$x[1:1000])*100/nrow(tw_geo))`%) pour les 1000 premiers points
 
 
 Ces superpositions de tweets ne doivent être que très rarement issues de position GPS.   
@@ -336,17 +336,35 @@ Les tweets se superposant ne sont pas issus de positions GPS mais sont assignés
 MM : oui, étonnant... en regardant, en zoomant sur la carte, on ne voit pas forcément que ces points correspondent à des centroïdes ou entrées de bâtiments, par ex.
 
 ```{r, eval=TRUE, cache=TRUE}
+# Sélection des 1000 premières paires de coordonnées ; transfo en données géo en WGS84
 twagcoord_frequents <- out[1:1000,]
 twagcoord_frequents_geo <- st_as_sf(as.data.frame(twagcoord_frequents), coords = c("lng","lat"), crs = 3035)
 twagcoord_frequents_geo <- st_transform(twagcoord_frequents_geo, 4326)
 
+# et carto des 100 premiers
 library(leaflet)
 leaflet() %>% addTiles() %>% 
   addCircleMarkers(data=twagcoord_frequents_geo[1:100,], popup = ~as.character(x),
+    radius = 5, color = "red", stroke = FALSE, fillOpacity = 0.5)
+```
+
+  
+Je m'interroge... (précision à 1 m près ?)
+
+Exemple autour de Bastille = 69ème point (avec 1149 tweets)  
+*Sauf qu'il ne veut pas afficher le zoom sur Bastille // pas compris*
+```{r, eval=TRUE,cache=TRUE}
+leaflet() %>% addTiles() %>% setView(lng=2.369,lat = 48.853,zoom=18) %>% 
+  addCircleMarkers(data=twagcoord_frequents_geo[1:100,], popup = ~as.character(x),
                    radius = 5,
                    color = "red",
-                   stroke = FALSE, fillOpacity = 0.5)
+                   stroke = FALSE, fillOpacity = 1)
 ```
+  
+et la carte avec tous les tweets autour de Bastille => l'assignement est curieux ici  
+  
+![ ](Img/Bastille.png)
+
 
 ### Ces points sont ils stables dans le temps
 
@@ -432,8 +450,8 @@ Faut-il ne considérer que les tweets ne se supperposant pas? Ou alors ce n'est 
 1000 points sur le même metre carré à montmartre doivent bien représenter 1000 personnes dans les environs (quelques metres à la ronde, quelque centaines de metres?). Quid des 145000 tweets sur la place de l'hotel de ville? 
 
 
-
-
+  
+MM : déprimant... à ne plus rien comprendre
 
 
 ```{r, eval=FALSE, echo=FALSE}
