@@ -327,13 +327,26 @@ plot(1:nrow(out), out$x, log="y",pch=20, cex=0.4, col="red", ylab = 'nb. tweets'
 ```
 
 Les premiers points de tweets concentrent la plupart des tweets.  
-`r sum(out$x[1:1000])` tweets pour les 1000 premiers points
+`r sum(out$x[1:1000])` tweets (soit `r sum(out$x[1:1000])*100/nrow(tw_geo)`%)pour les 1000 premiers points
 
 
-Ces superpositions de tweets ne doivent que très rarement issue de position GPS.   
-Les tweets se superposant ne sont pas issus de positions GPS mais sont assignés automatiquement à des POI (hotels de villes, batiments touristiques...)?
+Ces superpositions de tweets ne doivent être que très rarement issues de position GPS.   
+Les tweets se superposant ne sont pas issus de positions GPS mais sont assignés automatiquement à des POI (hotels de villes, batiments touristiques...) ?
 
+MM : oui, étonnant... en regardant, en zoomant sur la carte, on ne voit pas forcément que ces points correspondent à des centroïdes ou entrées de bâtiments, par ex.
 
+```{r, eval=TRUE, cache=TRUE}
+twagcoord_frequents <- out[1:1000,]
+twagcoord_frequents_geo <- st_as_sf(as.data.frame(twagcoord_frequents), coords = c("lng","lat"), crs = 3035)
+twagcoord_frequents_geo <- st_transform(twagcoord_frequents_geo, 4326)
+
+library(leaflet)
+leaflet() %>% addTiles() %>% 
+  addCircleMarkers(data=twagcoord_frequents_geo[1:100,], popup = ~as.character(x),
+                   radius = 5,
+                   color = "red",
+                   stroke = FALSE, fillOpacity = 0.5)
+```
 
 ### Ces points sont ils stables dans le temps
 
