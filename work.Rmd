@@ -365,6 +365,48 @@ et la carte avec tous les tweets autour de Bastille => l'assignement est curieux
   
 ![ ](Img/Bastille.png)
 
+  
+Par contre, je suis ok avec toi, ça correspond très souvent à des lieux touristiques. Et pas forcément à des lieux de fréquentation.
+Pour ex : j'ai voulu faire un cal heat map sur Les Halles (hypothèse : on va voir les we et vers Noël) ; j'ai voulu repérer les coordonnées à partir de la carte précédente, mais aucun point de tweets fréquent !
+
+? le point 3760272, 2892779
+https://www.google.fr/maps/place/Atelier+Gabrielle/@48.8856765,2.3410346,3a,75y,200.47h,113.48t/data=!3m10!1e1!3m8!1skQ08najJJeAV1kKFO5SzGA!2e0!6s%2F%2Fgeo3.ggpht.com%2Fcbk%3Fpanoid%3DkQ08najJJeAV1kKFO5SzGA%26output%3Dthumbnail%26cb_client%3Dmaps_sv.tactile.gps%26thumb%3D2%26w%3D203%26h%3D100%26yaw%3D305.7088%26pitch%3D0%26thumbfov%3D100!7i13312!8i6656!9m2!1b1!2i50!4m5!3m4!1s0x0:0x23450195cb76e624!8m2!3d48.8857579!4d2.3406758
+qui correspond à un intérieur de bloc ?
+
+Combien par source ?
+```{r, eval=TRUE,cache=TRUE}
+PtCurieux <- tw_geo %>% filter(round(X)==3760272 & round(Y) == 2892779) 
+100 * table(PtCurieux$source)/length(PtCurieux$source)
+```
+  
+Combien avec "@ Montmartre" dans cette sélection ?
+```{r}
+library(stringr)
+sum(str_detect(PtCurieux$text,"@ Montmartre"))
+sum(str_detect(PtCurieux$text,"@ Montmartre"))*100/length(PtCurieux$source)
+# et dans la base initiale : 
+sum(str_detect(tw_geo$text,"@ Montmartre"))
+```
+
+Donc autre chose...
+car tous les textes associés à cette localisation n'ont pas le @Montmartre et tous les @Montmartre ne sont pas associés à cette localisation 
+
+```{r echo=F,eval=F} 
+PtCurieux[str_detect(PtCurieux$text,"@ Montmartre") == F,] %>% View()
+```
+Si je cherche le post Instagram de l'id = 747020764910653440 (où pas de # Montmartre ou autre dans le texte) => https://www.instagram.com/p/BHHXk-MDSm3/ 
+je vois qu'il est indiqué "Montmartre (paris 18eme)"
+càd la location : https://www.instagram.com/explore/locations/226321924/montmartre-paris-18eme/
+
+Idem pour un autre tweet : 
+https://twitter.com/search?q=aliciakate11%20abbesses&src=typd&lang=fr
+couplé à un instagram
+https://www.instagram.com/p/BJxifMVDZGX/
+où dans le texte, pas de Montmartre ("abbesses") et insta localisé à "Montmartre (paris 18eme)"
+
+C'est a priori cette localisation *via* Instagram
+Plus loin, dans la partie 2.1.3, j'ai calculé la proportion d'instagram dans les 20 premiers "points de tw"
+
 
 ### Ces points sont ils stables dans le temps
 
@@ -463,7 +505,8 @@ ts <- aggregate(tsu$x, by = list(source = tsu$source), FUN = sum)
 cat(max(ts$x)*100 / sum(ts$x))                
 ```                
   
-En prenant les 20 premiers "points de tweets" :
+En prenant les 20 premiers "points de tweets" (et en supposant que la source la + fréquente est Instagram // ça mériterait pê de regarder plus précisément) :
+
 ```{r, eval=TRUE, cache=TRUE}
 for (m in 1:20){
 a <- tw_geo[tw_geo$X %in% out[m,"lng"] & tw_geo$Y %in% out[m,"lat"],  ]
