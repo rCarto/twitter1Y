@@ -376,15 +376,16 @@ source("calendarHeat.R")
 
 for(i in 1:10){
   xx <- tw_geo[tw_geo$X %in% out[i,"lng"] & tw_geo$Y %in% out[i,"lat"],  ]
-  user <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
+  users <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
   my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
-  cat(c("i:",i, "; tweets:",sum(my_ts$x),"; user:", nrow(user)))
+  cat(c("i:",i, "; tweets:",sum(my_ts$x),"; nb_users:", nrow(users)))
   calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
 }
 
 ```
 
 Et bien non, ces points ne sont pas stables dans le temps. 
+
 
 
 
@@ -421,9 +422,9 @@ c(i,j)
 
 # selection des tweets 
 xx <- tw_geo[tw_geo$X %in% out[c(i,j),"lng"] & tw_geo$Y %in% out[c(i,j),"lat"],  ]
-user <- aggregate(xx$id, by = list(u = xx$from_user_id),length)
+users <- aggregate(xx$id, by = list(u = xx$from_user_id),length)
 my_ts <- aggregate(xx$id, by = list(date = substr(xx$fulldate,1,10)), length)
-cat(c("tweets:",sum(my_ts$x),"; user:", nrow(user)))
+cat(c("tweets:",sum(my_ts$x),"; users:", nrow(users)))
 calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
 ```
 
@@ -434,9 +435,9 @@ Mais il ya mieux :
 ```{r, eval=TRUE, cache=TRUE}
 for(k in c(i,j)){
   xx <- tw_geo[tw_geo$X %in% out[k,"lng"] & tw_geo$Y %in% out[k,"lat"],  ]
-  user <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
+  users <- aggregate(xx$id,by=list(u=xx$from_user_id),length)
   my_ts <- aggregate(xx$id,by = list(date=substr(xx$fulldate,1,10)), length)
-  cat(c("i:",k, "; tweets:",sum(my_ts$x),"; user:", nrow(user)))
+  cat(c("i:",k, "; tweets:",sum(my_ts$x),"; users:", nrow(users)))
   calendarHeat(my_ts$date, my_ts$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
 }
 
@@ -451,8 +452,48 @@ Faut-il ne considérer que les tweets ne se supperposant pas? Ou alors ce n'est 
 
 
   
-MM : déprimant... à ne plus rien comprendre
+MM : déprimant... à ne plus rien comprendre  
+Je m'interroge sur la "source" : est-ce que ces points ne viennent que de instagram, par ex ?
 
+Proportion des tw > Instagram sur le jeu complet, initial, sans sélection : 
+```{r, eval=TRUE, cache=TRUE}
+tsu <- aggregate(tw_geo$id,by = list(source = tw_geo$source, 
+           from_user_id = tw_geo$from_user_id), FUN = length)
+ts <- aggregate(tsu$x, by = list(source = tsu$source), FUN = sum)
+cat(max(ts$x)*100 / sum(ts$x))                
+```                
+  
+En prenant les 20 premiers "points de tweets" :
+```{r, eval=TRUE, cache=TRUE}
+for (m in 1:20){
+a <- tw_geo[tw_geo$X %in% out[m,"lng"] & tw_geo$Y %in% out[m,"lat"],  ]
+tsu_select <- aggregate(a$id,by = list(source = a$source, 
+           from_user_id = a$from_user_id), FUN = length)
+ts_select <- aggregate(tsu_select$x, by = list(source = tsu_select$source), FUN = sum)
+cat("Points de tweets n°",m," : ",round(max(ts_select$x)*100 / sum(ts_select$x),2),"%", "\n") 
+}
+```
+  
+ 
+=> clairement une sur-représentation des Instagram
+
+
+  
+  
+---
+Juste pour essayer, la calendar heat map sur Bercy, pour voir si on voit ressortir les we (idInspire = 3638)
+
+```{r, eval=TRUE, cache=TRUE}
+tw_bercy <- tw_geo %>% filter(idINSPIRE == 3638)
+users_bercy <- aggregate(tw_bercy$id, by = list(u = tw_bercy$from_user_id),length)
+my_ts_bercy <- aggregate(tw_bercy$id, by = list(date = substr(tw_bercy$fulldate,1,10)), length)
+cat(c("tweets:",sum(my_ts_bercy$x),"; users:", nrow(users_bercy)))
+calendarHeat(my_ts_bercy$date, my_ts_bercy$x,ncolor=99, col = cartography::carto.pal(pal1 =  "blue.pal",20))
+```
+  
+Mouais, pas convaincant, même en log (non montré)
+
+A suivre...
 
 ```{r, eval=FALSE, echo=FALSE}
 library(sf)
